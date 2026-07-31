@@ -98,7 +98,7 @@ class OpenRouterProfile(ProviderProfile):
         sticky_key = get_conversation_context() or session_id
         if sticky_key:
             body["session_id"] = sticky_key
-        prefs = context.get("provider_preferences")
+        prefs = self.filter_routing_preferences(context.get("provider_preferences"))
         if prefs:
             body["provider"] = prefs
 

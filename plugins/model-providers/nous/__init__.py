@@ -43,7 +43,9 @@ class NousProfile(ProviderProfile):
         sticky_key = get_conversation_context() or session_id
         if sticky_key:
             body["session_id"] = sticky_key
-        provider_preferences = context.get("provider_preferences")
+        provider_preferences = self.filter_routing_preferences(
+            context.get("provider_preferences")
+        )
         if provider_preferences:
             body["provider"] = provider_preferences
         return body
