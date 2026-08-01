@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# install-eurouter-provider.sh — apply the EU Router (eurouter.ai) provider
+# patches from oliverhees/hermes-agent onto any hermes-agent installation.
+#
+# WHY THIS EXISTS
+# ----------------
+# `~/.hermes/hermes-agent` (the live install `hermes` runs from) tracks
+# NousResearch/hermes-agent directly and self-updates via `git pull --ff-only`
+# (see hermes_cli/update_cmd.py::_sync_with_upstream_if_needed). A branch that
+# has diverged (e.g. carries local EU Router commits) gets its uncommitted
+# changes auto-stashed and its branch pointer reset to origin/main — the
+# commits themselves survive (recoverable via `git reflog`/orphaned objects),
+# but they silently fall out of the checked-out history on every update. This
+# script re-applies them — cheap enough to run again after every
+# `hermes update` / auto-update, and safe to run repeatedly (skips commits
+# that are already present).
+#
+# WHAT IT DOES
+# ------------
+# 1. Fetches the `eurouter-provider` branch from oliverhees/hermes-agent
+#    (three commits: the eurouter.ai provider profile + provider_routing
+#    threading, the Desktop Settings/onboarding surface, and a follow-up
+#    fix — see that branch's own log for details).
+# 2. Cherry-picks each commit onto the target repo's current branch, in
+#    order, skipping any whose exact commit subject already exists in the
+#    target's history (idempotent — safe to run after every update).
+# 3. On a cherry-pick conflict it does NOT guess: it leaves the repo in the
+#    normal mid-cherry-pick state (`git cherry-pick --continue`/`--abort`
+#    both work) and exits non-zero with the commit that failed.
+# 4. Runs a Python syntax check on the touched backend files as a smoke test.
+#
+# USAGE
+#   scripts/install-eurouter-provider.sh [TARGET_DIR]
+#   TARGET_DIR defaults to ~/.hermes/hermes-agent.
+#
+# After it succeeds: restart `hermes desktop` (or run `hermes update` — the
+# content-stamp mechanism rebuilds the packaged app automatically) and make
+# sure EUROUTER_API_KEY is set in TARGET_DIR's ~/.hermes/.env (this script
+# only checks for it and warns; it does not create or edit that file).
+
+set -euo pipefail
+
+FORK_URL="https://github.com/oliverhees/hermes-agent.git"
+BRANCH="eurouter-provider"
+TARGET_DIR="${1:-$HOME/.hermes/hermes-agent}"
+
+# Commit subjects on $BRANCH, in application order. Matched verbatim against
+# `git log --format=%s` in the target repo for idempotency — NOT matched by
+# SHA, since cherry-pick always mints a new SHA in the target repo.
+COMMIT_SUBJECTS=(
+  "Add EU Router provider with EU data-residency routing rules"
+  "Surface EU Router in Hermes Desktop and document install/config"
+  "EU Router: fix eu_owned default bug, add allow_fallbacks + routing-rule picker"
+)
+
+log() { printf '%s\n' "$*"; }
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+[ -d "$TARGET_DIR/.git" ] || die "$TARGET_DIR is not a git repository (pass the hermes-agent install dir as \$1)."
+
+cd "$TARGET_DIR"
+
+if [ -n "$(git status --porcelain)" ]; then
+  die "Uncommitted changes in $TARGET_DIR — commit, stash, or discard them first. This script cherry-picks and refuses to run against a dirty tree (an unrelated conflict would be impossible to tell apart from your own WIP)."
+fi
+
+log "Fetching $BRANCH from $FORK_URL ..."
+git fetch "$FORK_URL" "$BRANCH" --quiet
+FETCH_HEAD_SHA="$(git rev-parse FETCH_HEAD)"
+
+# Ordered list of commit SHAs on the fetched branch, oldest first.
+mapfile -t BRANCH_SHAS < <(git log --reverse --format=%H "$FETCH_HEAD_SHA" -3)
+
+if [ "${#BRANCH_SHAS[@]}" -ne "${#COMMIT_SUBJECTS[@]}" ]; then
+  die "Expected ${#COMMIT_SUBJECTS[@]} commits on $BRANCH, found ${#BRANCH_SHAS[@]}. The branch changed shape upstream — update this script's COMMIT_SUBJECTS/count before re-running."
+fi
+
+applied=0
+skipped=0
+
+for i in "${!BRANCH_SHAS[@]}"; do
+  sha="${BRANCH_SHAS[$i]}"
+  subject="${COMMIT_SUBJECTS[$i]}"
+  actual_subject="$(git log -1 --format=%s "$sha")"
+  if [ "$actual_subject" != "$subject" ]; then
+    die "Commit $i on $BRANCH has subject '$actual_subject', expected '$subject'. Branch drifted — update this script."
+  fi
+
+  if git log --format=%s | grep -qxF "$subject"; then
+    log "Already applied, skipping: $subject"
+    skipped=$((skipped + 1))
+    continue
+  fi
+
+  log "Applying: $subject"
+  if ! git cherry-pick "$sha" >/dev/null 2>&1; then
+    log ""
+    log "Cherry-pick conflict on: $subject"
+    log "Resolve it manually (git status shows the conflicted files), then:"
+    log "  git add <resolved files> && git cherry-pick --continue"
+    log "or 'git cherry-pick --abort' to back out and try again later."
+    exit 1
+  fi
+  applied=$((applied + 1))
+done
+
+log ""
+log "Applied $applied commit(s), $skipped already present."
+
+log "Syntax-checking touched backend files ..."
+python3 - <<'PYEOF'
+import ast
+files = [
+    "agent/agent_init.py",
+    "agent/chat_completion_helpers.py",
+    "gateway/run.py",
+    "tools/delegate_tool.py",
+    "providers/base.py",
+    "plugins/model-providers/eurouter/__init__.py",
+    "hermes_cli/config_defaults.py",
+    "hermes_cli/web_server.py",
+    "run_agent.py",
+]
+for f in files:
+    with open(f, encoding="utf-8") as fh:
+        ast.parse(fh.read(), filename=f)
+print(f"  {len(files)} files OK")
+PYEOF
+
+log ""
+log "Done. Next steps:"
+log "  1. Restart 'hermes desktop' (or run 'hermes update') so the packaged"
+log "     app picks up the Desktop/settings changes — it rebuilds"
+log "     automatically when the content stamp is stale."
+if [ -f "$HOME/.hermes/.env" ] && grep -q '^EUROUTER_API_KEY=' "$HOME/.hermes/.env" 2>/dev/null; then
+  log "  2. EUROUTER_API_KEY is already set in ~/.hermes/.env — nothing to do."
+else
+  log "  2. Set EUROUTER_API_KEY in ~/.hermes/.env (not done by this script) —"
+  log "     get a key at https://www.eurouter.ai?ref=06ZUHPBK."
+fi

@@ -68,7 +68,7 @@ eurouter = EuRouterProfile(
     env_vars=("EUROUTER_API_KEY",),
     display_name="EU Router",
     description="EUrouter — EU-hosted, GDPR-compliant model routing",
-    signup_url="https://www.eurouter.ai/",
+    signup_url="https://www.eurouter.ai?ref=06ZUHPBK",
     base_url="https://api.eurouter.ai/api/v1",
     models_url="https://api.eurouter.ai/api/v1/models",
     fallback_models=(

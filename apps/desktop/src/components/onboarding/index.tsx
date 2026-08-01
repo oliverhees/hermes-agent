@@ -101,7 +101,7 @@ const API_KEY_OPTIONS: ApiKeyOption[] = [
     id: 'eurouter',
     name: 'EU Router',
     envKey: 'EUROUTER_API_KEY',
-    docsUrl: 'https://www.eurouter.ai/',
+    docsUrl: 'https://www.eurouter.ai?ref=06ZUHPBK',
     description: 'EU-hosted, GDPR-compliant model routing.'
   },
   {

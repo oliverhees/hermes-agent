@@ -225,7 +225,7 @@ export const PROVIDER_GROUPS: ProviderPrefix[] = [
     prefix: 'EUROUTER_',
     name: 'EU Router',
     description: 'EU-hosted, GDPR-compliant model routing',
-    docsUrl: 'https://www.eurouter.ai/',
+    docsUrl: 'https://www.eurouter.ai?ref=06ZUHPBK',
     priority: 24
   }
 ]

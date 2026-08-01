@@ -529,7 +529,7 @@ The base URL can be overridden with `GMI_BASE_URL` (default: `https://api.gmi-se
 **CLI:**
 
 ```bash
-# 1. Get a key at https://www.eurouter.ai (Get Started / API Keys)
+# 1. Get a key at https://www.eurouter.ai?ref=06ZUHPBK (Get Started / API Keys)
 echo "EUROUTER_API_KEY=your-key-here" >> ~/.hermes/.env
 
 # 2. Pick a model and chat
