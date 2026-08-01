@@ -109,6 +109,7 @@ class ProviderProfile:
         "sort",
         "require_parameters",
         "data_collection",
+        "allow_fallbacks",
     )
 
     def filter_routing_preferences(

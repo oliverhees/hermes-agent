@@ -22,6 +22,7 @@ import type {
   DebugShareResponse,
   ElevenLabsVoicesResponse,
   EnvVarInfo,
+  EuRouterRoutingRulesResponse,
   HermesConfig,
   HermesConfigRecord,
   LogsResponse,
@@ -1589,6 +1590,13 @@ export function speakText(text: string): Promise<AudioSpeakResponse> {
 export function getElevenLabsVoices(): Promise<ElevenLabsVoicesResponse> {
   return window.hermesDesktop.api<ElevenLabsVoicesResponse>({
     path: '/api/audio/elevenlabs/voices',
+    ...profileScoped()
+  })
+}
+
+export function getEuRouterRoutingRules(): Promise<EuRouterRoutingRulesResponse> {
+  return window.hermesDesktop.api<EuRouterRoutingRulesResponse>({
+    path: '/api/providers/eurouter/routing-rules',
     ...profileScoped()
   })
 }

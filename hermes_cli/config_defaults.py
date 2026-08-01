@@ -9,6 +9,39 @@ DEFAULT_CONFIG = {
     "providers": {},
     "fallback_providers": [],
     "credential_pool_strategies": {},
+    # Routing preferences for OpenRouter-shaped aggregators (OpenRouter, EU
+    # Router). Each field is filtered per-provider (ProviderProfile.
+    # routing_preference_keys) -- the EU-only fields below are silently
+    # dropped when routed through plain OpenRouter. See
+    # cli-config.yaml.example "Provider Routing" and
+    # https://www.eurouter.ai/docs/concepts/routing (EU Router only).
+    "provider_routing": {
+        # EU Router only — pick a routing rule already curated on the
+        # eurouter.ai dashboard (model + provider allow/deny list + EU-
+        # compliance flags bundled under one name) instead of reproducing
+        # every individual field below. Sent as a top-level "rule_name" on
+        # the request (see EuRouterProfile.build_extra_body), NOT nested
+        # under "provider" like the other fields here.
+        "rule_name": "",
+        "sort": "",
+        "only": [],
+        "ignore": [],
+        "order": [],
+        "require_parameters": False,
+        # allow_fallbacks: unset is None, not False — "explicitly disable
+        # fallback" is a meaningful, different value from "not configured".
+        "allow_fallbacks": None,
+        "data_collection": "",
+        "data_residency": "",
+        # eu_owned: unset is None, not False — same "0/False is meaningful"
+        # reasoning as max_retention_days below. agent/chat_completion_
+        # helpers.py._provider_preferences_for_agent() only includes it when
+        # `is not None`; defaulting to False would silently send
+        # "eu_owned: false" on every single request for every user who never
+        # touched this setting.
+        "eu_owned": None,
+        "max_retention_days": None,
+    },
     "toolsets": ["hermes-cli"],
     # SQLite journal mode used by every Hermes database opener. WAL is the
     # normal default; set DELETE for weak-fsync/shared filesystems where WAL is

@@ -199,6 +199,14 @@ def _provider_preferences_for_agent(agent) -> Dict[str, Any]:
         preferences["eu_owned"] = bool(agent.provider_eu_owned)
     if agent.provider_max_retention_days is not None:
         preferences["max_retention_days"] = int(agent.provider_max_retention_days)
+    if getattr(agent, "provider_allow_fallbacks", None) is not None:
+        preferences["allow_fallbacks"] = bool(agent.provider_allow_fallbacks)
+    # NOT filtered by ProviderProfile.routing_preference_keys (see
+    # EuRouterProfile.build_extra_body): a saved routing rule is sent as a
+    # top-level "rule_name" field, not nested under "provider" like the keys
+    # above — https://www.eurouter.ai/docs/api/chat.
+    if getattr(agent, "provider_rule_name", None):
+        preferences["rule_name"] = agent.provider_rule_name
     return preferences
 
 

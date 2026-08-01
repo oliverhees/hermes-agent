@@ -844,6 +844,48 @@ _SCHEMA_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "description": "Context window override (0 = auto-detect from model metadata)",
         "category": "general",
     },
+    "provider_routing.rule_name": {
+        "type": "string",
+        "description": (
+            "EU Router only — apply a routing rule you already saved on the eurouter.ai "
+            "dashboard (bundles model + provider list + EU-compliance flags under one "
+            "name), instead of setting the fields below individually."
+        ),
+    },
+    "provider_routing.sort": {
+        "type": "select",
+        "description": "Routing sort strategy (OpenRouter-shaped aggregators: OpenRouter, EU Router)",
+        "options": ["", "price", "throughput", "latency"],
+        "clearable": True,
+    },
+    "provider_routing.allow_fallbacks": {
+        "type": "boolean",
+        "description": "Allow falling back to another provider if the preferred one fails (default: allowed)",
+    },
+    "provider_routing.data_collection": {
+        "type": "select",
+        "description": "Data policy — deny excludes providers that may store data",
+        "options": ["", "allow", "deny"],
+        "clearable": True,
+    },
+    "provider_routing.data_residency": {
+        "type": "select",
+        "description": "EU Router only — restrict to a data-residency region",
+        # Documented examples only (eurouter.ai does not publish an exhaustive
+        # list) — "clearable" keeps blank/unset valid, and an already-saved
+        # value outside this list is still shown (see enumOptionsFor on the
+        # desktop side), just not selectable fresh from the dropdown.
+        "options": ["", "eu", "eea", "de", "fr"],
+        "clearable": True,
+    },
+    "provider_routing.eu_owned": {
+        "type": "boolean",
+        "description": "EU Router only — restrict to EEA-owned providers only (stricter than data_residency)",
+    },
+    "provider_routing.max_retention_days": {
+        "type": "number",
+        "description": "EU Router only — maximum days a provider may retain request data (0 = no retention)",
+    },
     "terminal.backend": {
         "type": "select",
         "description": "Terminal execution backend",
@@ -4308,6 +4350,93 @@ def _voice_list_error_logged_once(signature: Optional[str]) -> bool:
         return False
     _voice_list_last_error = signature
     return True
+
+
+# Collapses repeated identical EU Router routing-rules-list failures (the
+# desktop polls this on every Settings open/focus) to a single log line.
+# Mirrors _voice_list_error_logged_once (see there for the re-arm rationale).
+_eurouter_rules_last_error: Optional[str] = None
+
+
+def _eurouter_rules_error_logged_once(signature: Optional[str]) -> bool:
+    global _eurouter_rules_last_error
+    if signature is None:
+        _eurouter_rules_last_error = None
+        return False
+    if signature == _eurouter_rules_last_error:
+        return False
+    _eurouter_rules_last_error = signature
+    return True
+
+
+@app.get("/api/providers/eurouter/routing-rules")
+async def get_eurouter_routing_rules(profile: Optional[str] = None):
+    """Return the user's saved EU Router routing rules when a key is configured.
+
+    The desktop UI uses this for the ``provider_routing.rule_name`` dropdown —
+    lets the user pick a rule they already curated on the eurouter.ai dashboard
+    (model + provider allow/deny list + EU-compliance flags) instead of
+    reproducing every individual routing knob in Hermes' own settings.
+    See https://www.eurouter.ai/docs/api/routing-rules. Only rule id/name/
+    enabled are returned; the API key stays server-side.
+    """
+    with _config_profile_scope(profile):
+        api_key = (load_env().get("EUROUTER_API_KEY") or os.environ.get("EUROUTER_API_KEY") or "").strip()
+    if not api_key:
+        return {"available": False, "rules": []}
+
+    request = urllib.request.Request(
+        "https://api.eurouter.ai/api/v1/routing-rules",
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+    )
+
+    try:
+        loop = asyncio.get_running_loop()
+
+        def _fetch() -> Dict[str, Any]:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return json.loads(response.read().decode("utf-8"))
+
+        payload = await loop.run_in_executor(None, _fetch)
+    except urllib.error.HTTPError as exc:
+        # Same reasoning as the ElevenLabs voice list: auth failure is a
+        # persistent, user-fixable state, not a transient blip.
+        if exc.code in (401, 403):
+            if _eurouter_rules_error_logged_once(f"http-{exc.code}"):
+                _log.info(
+                    "EU Router routing rules unavailable: %s — check EUROUTER_API_KEY", exc
+                )
+            return {"available": False, "rules": [], "error": "unauthorized"}
+        if _eurouter_rules_error_logged_once(f"http-{exc.code}"):
+            _log.warning("EU Router routing-rules list failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not load EU Router routing rules")
+    except Exception as exc:
+        if _eurouter_rules_error_logged_once(str(exc)):
+            _log.warning("EU Router routing-rules list failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not load EU Router routing rules")
+    _eurouter_rules_error_logged_once(None)  # success — re-arm logging for next failure
+
+    rules = []
+    for rule in payload.get("data") or []:
+        if not isinstance(rule, dict):
+            continue
+
+        name = str(rule.get("name") or "").strip()
+        if not name:
+            continue
+
+        rules.append({
+            "id": str(rule.get("id") or ""),
+            "name": name,
+            "enabled": bool(rule.get("enabled", True)),
+            "model": str(rule.get("model") or ""),
+        })
+
+    rules.sort(key=lambda item: item["name"].lower())
+    return {"available": True, "rules": rules}
 
 
 @app.get("/api/audio/elevenlabs/voices")

@@ -28,7 +28,17 @@ class EuRouterProfile(ProviderProfile):
         body: dict[str, Any] = {}
         if session_id:
             body["session_id"] = session_id
-        prefs = self.filter_routing_preferences(context.get("provider_preferences"))
+        raw_prefs = context.get("provider_preferences") or {}
+        # "rule_name" references a routing rule the user already saved on the
+        # eurouter.ai dashboard (bundles model + provider list + EU-compliance
+        # flags under one name). It is a TOP-LEVEL request field, a sibling of
+        # "provider" — NOT one of the nested provider.* preferences below —
+        # so it's pulled out before filtering instead of going through
+        # routing_preference_keys. See https://www.eurouter.ai/docs/api/chat.
+        rule_name = raw_prefs.get("rule_name")
+        if rule_name:
+            body["rule_name"] = rule_name
+        prefs = self.filter_routing_preferences(raw_prefs)
         if prefs:
             body["provider"] = prefs
         return body

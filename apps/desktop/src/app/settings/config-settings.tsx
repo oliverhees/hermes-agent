@@ -6,7 +6,7 @@ import { useSearchParams } from 'react-router'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { getElevenLabsVoices, getHermesConfigSchema, saveHermesConfig } from '@/hermes'
+import { getElevenLabsVoices, getEuRouterRoutingRules, getHermesConfigSchema, saveHermesConfig } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import {
@@ -88,6 +88,8 @@ export function ConfigSettings({
   const schema = schemaResponse?.fields ?? null
   const [elevenLabsVoiceOptions, setElevenLabsVoiceOptions] = useState<string[] | null>(null)
   const [elevenLabsVoiceLabels, setElevenLabsVoiceLabels] = useState<Record<string, string>>({})
+  const [euRouterRuleOptions, setEuRouterRuleOptions] = useState<string[] | null>(null)
+  const [euRouterRuleLabels, setEuRouterRuleLabels] = useState<Record<string, string>>({})
   const saveVersionRef = useRef(0)
   const savedDiscoverySignatureRef = useRef<string | undefined>(undefined)
   const [saveVersion, setSaveVersion] = useState(0)
@@ -133,6 +135,24 @@ export function ConfigSettings({
         if (!cancelled) {
           setElevenLabsVoiceOptions(null)
           setElevenLabsVoiceLabels({})
+        }
+      })
+
+    getEuRouterRoutingRules()
+      .then(result => {
+        if (cancelled || !result.available) {
+          return
+        }
+
+        setEuRouterRuleOptions(result.rules.map(rule => rule.name))
+        setEuRouterRuleLabels(
+          Object.fromEntries(result.rules.map(rule => [rule.name, rule.enabled ? rule.name : `${rule.name} (disabled)`]))
+        )
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEuRouterRuleOptions(null)
+          setEuRouterRuleLabels({})
         }
       })
 
@@ -335,10 +355,18 @@ export function ConfigSettings({
                 enumOptions={
                   key === 'tts.elevenlabs.voice_id'
                     ? enumOptionsFor(key, getNested(config, key), config, elevenLabsVoiceOptions ?? undefined)
-                    : enumOptionsFor(key, getNested(config, key), config)
+                    : key === 'provider_routing.rule_name'
+                      ? enumOptionsFor(key, getNested(config, key), config, euRouterRuleOptions ?? undefined)
+                      : enumOptionsFor(key, getNested(config, key), config)
                 }
                 onChange={value => updateConfig(setNested(config, key, value))}
-                optionLabels={key === 'tts.elevenlabs.voice_id' ? elevenLabsVoiceLabels : undefined}
+                optionLabels={
+                  key === 'tts.elevenlabs.voice_id'
+                    ? elevenLabsVoiceLabels
+                    : key === 'provider_routing.rule_name'
+                      ? euRouterRuleLabels
+                      : undefined
+                }
                 schema={field}
                 schemaKey={key}
                 value={getNested(config, key)}

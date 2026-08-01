@@ -647,7 +647,28 @@ export const SECTIONS: DesktopConfigSection[] = [
     id: 'model',
     label: 'Model',
     icon: Box,
-    keys: ['model_context_length', 'fallback_providers']
+    keys: [
+      'model_context_length',
+      'fallback_providers',
+      // Provider Routing (OpenRouter-shaped aggregators: OpenRouter, EU
+      // Router) -- see cli-config.yaml.example "Provider Routing" and
+      // hermes_cli/web_server.py _SCHEMA_OVERRIDES for the field types.
+      // rule_name first: the simplest path for EU Router users who already
+      // curate rules on the eurouter.ai dashboard (see EuRouterRoutingRules
+      // fetch below) -- the individual fields after it are the manual
+      // fallback for OpenRouter or one-off overrides.
+      'provider_routing.rule_name',
+      'provider_routing.sort',
+      'provider_routing.only',
+      'provider_routing.ignore',
+      'provider_routing.order',
+      'provider_routing.require_parameters',
+      'provider_routing.allow_fallbacks',
+      'provider_routing.data_collection',
+      'provider_routing.data_residency',
+      'provider_routing.eu_owned',
+      'provider_routing.max_retention_days'
+    ]
   },
   {
     id: 'chat',

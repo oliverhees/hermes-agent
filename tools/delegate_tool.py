@@ -1484,6 +1484,8 @@ def _build_child_agent(
     child_provider_max_retention_days = getattr(
         parent_agent, "provider_max_retention_days", None
     )
+    child_provider_allow_fallbacks = getattr(parent_agent, "provider_allow_fallbacks", None)
+    child_provider_rule_name = getattr(parent_agent, "provider_rule_name", None) or ""
     child_openrouter_min_coding_score = getattr(parent_agent, "openrouter_min_coding_score", None)
     if override_provider:
         child_providers_allowed = None
@@ -1495,6 +1497,8 @@ def _build_child_agent(
         child_provider_data_residency = ""
         child_provider_eu_owned = None
         child_provider_max_retention_days = None
+        child_provider_allow_fallbacks = None
+        child_provider_rule_name = ""
         # Note: openrouter_min_coding_score is model-gated (only emitted on
         # openrouter/pareto-code), so we keep it inherited even when the
         # provider is overridden — it's a no-op on any other model.
@@ -1545,6 +1549,8 @@ def _build_child_agent(
             provider_data_residency=child_provider_data_residency,
             provider_eu_owned=child_provider_eu_owned,
             provider_max_retention_days=child_provider_max_retention_days,
+            provider_allow_fallbacks=child_provider_allow_fallbacks,
+            provider_rule_name=child_provider_rule_name,
             request_overrides=(
                 dict(override_request_overrides or {})
                 if override_provider

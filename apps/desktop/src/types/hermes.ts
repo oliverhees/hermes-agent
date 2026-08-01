@@ -40,6 +40,19 @@ export interface ElevenLabsVoicesResponse {
   voices: ElevenLabsVoice[]
 }
 
+export interface EuRouterRoutingRule {
+  enabled: boolean
+  id: string
+  model: string
+  name: string
+}
+
+export interface EuRouterRoutingRulesResponse {
+  available: boolean
+  error?: string
+  rules: EuRouterRoutingRule[]
+}
+
 export interface OAuthProviderStatus {
   error?: string
   expires_at?: null | string
