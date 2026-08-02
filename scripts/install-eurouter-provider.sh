@@ -55,6 +55,7 @@ COMMIT_SUBJECTS=(
   "EU Router: use referral link for signup/key CTAs, add cross-device install script"
   "EU Router: register in HERMES_OVERLAYS so --provider/model-switch resolve it"
   "EU Router: curate model picker to routing-rule models, add rule quick-picks"
+  "EU Router: add rule quick-picks to the composer's model dropdown too"
 )
 # NOTE: this script's own maintenance commits (e.g. "install script: ...")
 # are deliberately NOT listed here — they only touch this file, which has no
