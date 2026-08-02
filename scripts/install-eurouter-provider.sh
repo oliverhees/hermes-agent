@@ -53,6 +53,7 @@ COMMIT_SUBJECTS=(
   "Surface EU Router in Hermes Desktop and document install/config"
   "EU Router: fix eu_owned default bug, add allow_fallbacks + routing-rule picker"
   "EU Router: use referral link for signup/key CTAs, add cross-device install script"
+  "EU Router: register in HERMES_OVERLAYS so --provider/model-switch resolve it"
 )
 # NOTE: this script's own maintenance commits (e.g. "install script: ...")
 # are deliberately NOT listed here — they only touch this file, which has no
@@ -137,6 +138,7 @@ files = [
     "plugins/model-providers/eurouter/__init__.py",
     "hermes_cli/config_defaults.py",
     "hermes_cli/web_server.py",
+    "hermes_cli/providers.py",
     "run_agent.py",
 ]
 for f in files:
