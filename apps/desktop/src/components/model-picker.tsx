@@ -6,9 +6,9 @@ import { modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
 import { modelSearchText } from '@/lib/model-search-text'
 import { currentPickerSelection } from '@/lib/model-status-label'
 import { normalize } from '@/lib/text'
-import type { ModelOptionProvider, ModelPricing } from '@/types/hermes'
+import type { EuRouterRoutingRule, ModelOptionProvider, ModelPricing } from '@/types/hermes'
 
-import type { HermesGateway } from '../hermes'
+import { getEuRouterRoutingRules, saveHermesConfig, type HermesGateway } from '../hermes'
 import { cn } from '../lib/utils'
 import { startManualOnboarding } from '../store/onboarding'
 
@@ -65,6 +65,17 @@ export function ModelPickerDialog({
 
   const providers = modelOptions.data?.providers ?? []
 
+  // Named EU Router routing rules (eurouter.ai dashboard) so the picker can
+  // offer "EU Compliance 2" etc. as one-click entries alongside raw model
+  // names. Harmless no-op query when the account has no EU Router key —
+  // `available: false` renders nothing.
+  const euRouterRules = useQuery({
+    queryKey: ['eurouter-routing-rules'],
+    queryFn: () => getEuRouterRoutingRules(),
+    enabled: open,
+    staleTime: 60_000
+  })
+
   const { model: optionsModel, provider: optionsProvider } = currentPickerSelection(
     { model: currentModel, provider: currentProvider },
     modelOptions.data
@@ -81,6 +92,22 @@ export function ModelPickerDialog({
   const selectModel = (provider: ModelOptionProvider, model: string) => {
     onSelect({ provider: provider.slug, model })
     onOpenChange(false)
+  }
+
+  // A rule bundles a model choice with eurouter.ai-side routing/compliance
+  // config the user already curated — picking it sets BOTH the model (same
+  // path as any manual pick) and persists provider_routing.rule_name so the
+  // next request actually uses the rule. The config PUT deep-merges on the
+  // backend, so this can't clobber unrelated settings.
+  const selectRule = (rule: EuRouterRoutingRule) => {
+    onSelect({ provider: 'eurouter', model: rule.model })
+    onOpenChange(false)
+    void saveHermesConfig({ provider_routing: { rule_name: rule.name } }).catch(() => {
+      // Model switch already succeeded and closed the dialog — a failed
+      // rule_name persist just means the NEXT request falls back to
+      // whatever routing config was already saved. Not worth a toast for
+      // a picker action the user has already moved on from.
+    })
   }
 
   // Open the full onboarding provider selector to add/switch a provider.
@@ -111,8 +138,10 @@ export function ModelPickerDialog({
               currentModel={optionsModel || currentModel}
               currentProvider={optionsProvider || currentProvider}
               error={error}
+              euRouterRules={euRouterRules.data?.available ? euRouterRules.data.rules : []}
               loading={loading}
               onSelectModel={selectModel}
+              onSelectRule={selectRule}
               providers={providers}
               search={search}
             />
@@ -138,7 +167,9 @@ function ModelResults({
   providers,
   currentModel,
   currentProvider,
+  euRouterRules,
   onSelectModel,
+  onSelectRule,
   search
 }: {
   loading: boolean
@@ -146,7 +177,9 @@ function ModelResults({
   providers: ModelOptionProvider[]
   currentModel: string
   currentProvider: string
+  euRouterRules: EuRouterRoutingRule[]
   onSelectModel: (provider: ModelOptionProvider, model: string) => void
+  onSelectRule: (rule: EuRouterRoutingRule) => void
   search: string
 }) {
   const { t } = useI18n()
@@ -189,7 +222,17 @@ function ModelResults({
         // Preserve the backend's curated order — filter in place, no re-sort.
         const models = (provider.models ?? []).filter(m => matches(provider, m))
 
-        if (models.length === 0) {
+        // EU Router only: named routing rules the user curated on the
+        // eurouter.ai dashboard, rendered ahead of the raw model list so a
+        // one-click pick sets model + provider_routing.rule_name together.
+        const rules =
+          provider.slug === 'eurouter'
+            ? euRouterRules.filter(
+                rule => rule.enabled && (!q || modelSearchText(rule.name).toLowerCase().includes(q))
+              )
+            : []
+
+        if (models.length === 0 && rules.length === 0) {
           return null
         }
 
@@ -204,6 +247,34 @@ function ModelResults({
                 </InlineNotice>
               </div>
             )}
+            {rules.map(rule => {
+              const isCurrent = rule.model === currentModel && provider.slug === currentProvider
+
+              return (
+                <CommandItem
+                  className={cn(
+                    'flex items-center gap-2 pl-6 font-mono',
+                    isCurrent &&
+                      'bg-primary text-primary-foreground data-[selected=true]:bg-primary data-[selected=true]:text-primary-foreground'
+                  )}
+                  key={`${provider.slug}:rule:${rule.id}`}
+                  onSelect={() => onSelectRule(rule)}
+                  value={`${provider.slug}:rule:${rule.name}`}
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    <HighlightMatches query={search} text={rule.name} />
+                  </span>
+                  <span
+                    className={cn(
+                      'shrink-0 text-[0.66rem] tabular-nums',
+                      isCurrent ? 'text-primary-foreground/80' : 'text-muted-foreground'
+                    )}
+                  >
+                    {rule.model}
+                  </span>
+                </CommandItem>
+              )
+            })}
             {models.map(model => {
               const isCurrent = model === currentModel && provider.slug === currentProvider
               const price = provider.pricing?.[model]

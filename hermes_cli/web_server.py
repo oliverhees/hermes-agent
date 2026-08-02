@@ -4433,6 +4433,7 @@ async def get_eurouter_routing_rules(profile: Optional[str] = None):
             "name": name,
             "enabled": bool(rule.get("enabled", True)),
             "model": str(rule.get("model") or ""),
+            "models": [str(m).strip() for m in (rule.get("models") or []) if str(m).strip()],
         })
 
     rules.sort(key=lambda item: item["name"].lower())

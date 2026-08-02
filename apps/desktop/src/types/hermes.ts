@@ -44,6 +44,8 @@ export interface EuRouterRoutingRule {
   enabled: boolean
   id: string
   model: string
+  /** Additional models this rule also covers, alongside `model` (may be empty). */
+  models: string[]
   name: string
 }
 

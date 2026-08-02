@@ -2809,6 +2809,37 @@ def provider_model_ids(provider: Optional[str], *, force_refresh: bool = False) 
     normalized = normalize_provider(provider)
     if normalized == "openrouter":
         return model_ids(force_refresh=force_refresh)
+    if normalized == "eurouter":
+        # Unlike OpenRouter's full public catalog, EU Router's account-level
+        # routing rules (eurouter.ai dashboard) are what actually determine
+        # which models a request can reach — picking a model outside every
+        # rule 400s at request time. Curate the picker down to exactly the
+        # models the user's enabled rules cover instead of the full public
+        # /models catalog (fallback_models on the profile) whenever rules are
+        # reachable; fall through to the generic profile-based path below
+        # (full live catalog) if the key is missing or the fetch fails, so
+        # the picker never goes empty.
+        try:
+            from hermes_cli.auth import resolve_api_key_provider_credentials
+            from hermes_cli.eurouter_routing import fetch_eurouter_routing_rules
+
+            creds = resolve_api_key_provider_credentials("eurouter")
+            api_key = str(creds.get("api_key") or "").strip()
+            rules = fetch_eurouter_routing_rules(api_key) if api_key else None
+            if rules:
+                curated: list[str] = []
+                seen: set[str] = set()
+                for rule in rules:
+                    if not rule["enabled"]:
+                        continue
+                    for m in (rule["model"], *rule["models"]):
+                        if m and _model_dedup_key(m) not in seen:
+                            curated.append(m)
+                            seen.add(_model_dedup_key(m))
+                if curated:
+                    return curated
+        except Exception:
+            pass
     if normalized == "openai-codex":
         from hermes_cli.codex_models import get_codex_model_ids
 
