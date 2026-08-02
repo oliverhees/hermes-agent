@@ -95,13 +95,23 @@ applied=0
 skipped=0
 next_expected=0
 
+# Computed once, matched in-memory below via bash string comparison — NOT
+# `git log --format=%s | grep -qxF ...` per commit. That pattern is a classic
+# pipefail trap: grep -q exits the instant it finds a match and closes its
+# end of the pipe, `git log` then dies mid-write on SIGPIPE, and
+# `set -o pipefail` reports that as the pipeline's exit status even though
+# grep DID match — silently forcing every "already applied" commit down the
+# "Applying" path (and straight into a real cherry-pick conflict against
+# already-present content).
+existing_subjects="$(git log --format=%s)"
+
 for sha in "${BRANCH_SHAS[@]}"; do
   [ "$next_expected" -lt "${#COMMIT_SUBJECTS[@]}" ] || break
   subject="$(git log -1 --format=%s "$sha")"
   [ "$subject" = "${COMMIT_SUBJECTS[$next_expected]}" ] || continue
   next_expected=$((next_expected + 1))
 
-  if git log --format=%s | grep -qxF "$subject"; then
+  if grep -qxF "$subject" <<< "$existing_subjects"; then
     log "Already applied, skipping: $subject"
     skipped=$((skipped + 1))
     continue
