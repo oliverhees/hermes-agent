@@ -18,9 +18,10 @@
 # WHAT IT DOES
 # ------------
 # 1. Fetches the `eurouter-provider` branch from oliverhees/hermes-agent
-#    (three commits: the eurouter.ai provider profile + provider_routing
-#    threading, the Desktop Settings/onboarding surface, and a follow-up
-#    fix — see that branch's own log for details).
+#    (see COMMIT_SUBJECTS below for the exact commit list — the eurouter.ai
+#    provider profile + provider_routing threading, the Desktop
+#    Settings/onboarding surface, a follow-up fix, and the referral-link
+#    update — see that branch's own log for details).
 # 2. Cherry-picks each commit onto the target repo's current branch, in
 #    order, skipping any whose exact commit subject already exists in the
 #    target's history (idempotent — safe to run after every update).
@@ -51,6 +52,7 @@ COMMIT_SUBJECTS=(
   "Add EU Router provider with EU data-residency routing rules"
   "Surface EU Router in Hermes Desktop and document install/config"
   "EU Router: fix eu_owned default bug, add allow_fallbacks + routing-rule picker"
+  "EU Router: use referral link for signup/key CTAs, add cross-device install script"
 )
 
 log() { printf '%s\n' "$*"; }
@@ -68,8 +70,10 @@ log "Fetching $BRANCH from $FORK_URL ..."
 git fetch "$FORK_URL" "$BRANCH" --quiet
 FETCH_HEAD_SHA="$(git rev-parse FETCH_HEAD)"
 
-# Ordered list of commit SHAs on the fetched branch, oldest first.
-mapfile -t BRANCH_SHAS < <(git log --reverse --format=%H "$FETCH_HEAD_SHA" -3)
+# Ordered list of commit SHAs on the fetched branch, oldest first. Count is
+# derived from COMMIT_SUBJECTS, NOT hardcoded — bump that array (not this
+# line) when a new commit is added to $BRANCH.
+mapfile -t BRANCH_SHAS < <(git log --reverse --format=%H "$FETCH_HEAD_SHA" -"${#COMMIT_SUBJECTS[@]}")
 
 if [ "${#BRANCH_SHAS[@]}" -ne "${#COMMIT_SUBJECTS[@]}" ]; then
   die "Expected ${#COMMIT_SUBJECTS[@]} commits on $BRANCH, found ${#BRANCH_SHAS[@]}. The branch changed shape upstream — update this script's COMMIT_SUBJECTS/count before re-running."
