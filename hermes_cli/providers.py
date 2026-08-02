@@ -54,6 +54,13 @@ HERMES_OVERLAYS: Dict[str, HermesOverlay] = {
         is_aggregator=True,
         base_url_env_var="OPENROUTER_BASE_URL",
     ),
+    "eurouter": HermesOverlay(
+        transport="openai_chat",
+        is_aggregator=True,
+        extra_env_vars=("EUROUTER_API_KEY",),
+        base_url_override="https://api.eurouter.ai/api/v1",
+        base_url_env_var="EUROUTER_BASE_URL",
+    ),
     "nous": HermesOverlay(
         transport="openai_chat",
         auth_type="oauth_device_code",
@@ -269,6 +276,10 @@ ALIASES: Dict[str, str] = {
     # openrouter
     "openai": "openrouter",     # bare "openai" → route through aggregator
 
+    # eurouter
+    "eu-router": "eurouter",
+    "eur": "eurouter",
+
     # zai
     "glm": "zai",
     "z-ai": "zai",
@@ -402,6 +413,7 @@ ALIASES: Dict[str, str] = {
 _LABEL_OVERRIDES: Dict[str, str] = {
     "moa": "Mixture of Agents",
     "nous": "Nous Portal",
+    "eurouter": "EU Router",
     "openai-codex": "OpenAI Codex",
     "copilot-acp": "GitHub Copilot ACP",
     "stepfun": "StepFun Step Plan",
