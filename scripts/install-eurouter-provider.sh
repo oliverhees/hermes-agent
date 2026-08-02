@@ -70,13 +70,19 @@ log "Fetching $BRANCH from $FORK_URL ..."
 git fetch "$FORK_URL" "$BRANCH" --quiet
 FETCH_HEAD_SHA="$(git rev-parse FETCH_HEAD)"
 
-# Ordered list of commit SHAs on the fetched branch, oldest first. Count is
-# derived from COMMIT_SUBJECTS, NOT hardcoded — bump that array (not this
-# line) when a new commit is added to $BRANCH.
-mapfile -t BRANCH_SHAS < <(git log --reverse --format=%H "$FETCH_HEAD_SHA" -"${#COMMIT_SUBJECTS[@]}")
+# Ordered list of commit SHAs unique to the fetched branch, oldest first —
+# i.e. everything from where it diverged from the target's own history up to
+# its tip. Deliberately NOT "last N commits": both repos descend from
+# NousResearch/hermes-agent, so merge-base finds the true fork point
+# regardless of how many commits either side has added since. This means
+# COMMIT_SUBJECTS only ever needs a new entry appended, never a count bumped
+# alongside it (a past version of this script hardcoded the count and broke
+# every time a commit was added to $BRANCH).
+MERGE_BASE_SHA="$(git merge-base "$FETCH_HEAD_SHA" HEAD)"
+mapfile -t BRANCH_SHAS < <(git log --reverse --format=%H "$MERGE_BASE_SHA..$FETCH_HEAD_SHA")
 
 if [ "${#BRANCH_SHAS[@]}" -ne "${#COMMIT_SUBJECTS[@]}" ]; then
-  die "Expected ${#COMMIT_SUBJECTS[@]} commits on $BRANCH, found ${#BRANCH_SHAS[@]}. The branch changed shape upstream — update this script's COMMIT_SUBJECTS/count before re-running."
+  die "Expected ${#COMMIT_SUBJECTS[@]} commits on $BRANCH since it diverged from $TARGET_DIR's history, found ${#BRANCH_SHAS[@]}. The branch changed shape upstream — update this script's COMMIT_SUBJECTS before re-running."
 fi
 
 applied=0
