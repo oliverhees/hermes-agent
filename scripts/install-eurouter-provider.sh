@@ -54,6 +54,12 @@ COMMIT_SUBJECTS=(
   "EU Router: fix eu_owned default bug, add allow_fallbacks + routing-rule picker"
   "EU Router: use referral link for signup/key CTAs, add cross-device install script"
 )
+# NOTE: this script's own maintenance commits (e.g. "install script: ...")
+# are deliberately NOT listed here — they only touch this file, which has no
+# reason to exist inside a target hermes-agent checkout. The matching logic
+# below finds these subjects as an in-order SUBSET of the branch's commits,
+# skipping anything else (like this script's own history) it encounters
+# along the way, rather than requiring an exact commit-for-commit count.
 
 log() { printf '%s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -81,20 +87,18 @@ FETCH_HEAD_SHA="$(git rev-parse FETCH_HEAD)"
 MERGE_BASE_SHA="$(git merge-base "$FETCH_HEAD_SHA" HEAD)"
 mapfile -t BRANCH_SHAS < <(git log --reverse --format=%H "$MERGE_BASE_SHA..$FETCH_HEAD_SHA")
 
-if [ "${#BRANCH_SHAS[@]}" -ne "${#COMMIT_SUBJECTS[@]}" ]; then
-  die "Expected ${#COMMIT_SUBJECTS[@]} commits on $BRANCH since it diverged from $TARGET_DIR's history, found ${#BRANCH_SHAS[@]}. The branch changed shape upstream — update this script's COMMIT_SUBJECTS before re-running."
-fi
-
+# Walk the branch's commits in order, matching COMMIT_SUBJECTS as an in-order
+# SUBSET (not 1:1) — any branch commit not in the list (this script's own
+# maintenance commits, most likely) is silently skipped rather than applied.
 applied=0
 skipped=0
+next_expected=0
 
-for i in "${!BRANCH_SHAS[@]}"; do
-  sha="${BRANCH_SHAS[$i]}"
-  subject="${COMMIT_SUBJECTS[$i]}"
-  actual_subject="$(git log -1 --format=%s "$sha")"
-  if [ "$actual_subject" != "$subject" ]; then
-    die "Commit $i on $BRANCH has subject '$actual_subject', expected '$subject'. Branch drifted — update this script."
-  fi
+for sha in "${BRANCH_SHAS[@]}"; do
+  [ "$next_expected" -lt "${#COMMIT_SUBJECTS[@]}" ] || break
+  subject="$(git log -1 --format=%s "$sha")"
+  [ "$subject" = "${COMMIT_SUBJECTS[$next_expected]}" ] || continue
+  next_expected=$((next_expected + 1))
 
   if git log --format=%s | grep -qxF "$subject"; then
     log "Already applied, skipping: $subject"
@@ -113,6 +117,10 @@ for i in "${!BRANCH_SHAS[@]}"; do
   fi
   applied=$((applied + 1))
 done
+
+if [ "$next_expected" -ne "${#COMMIT_SUBJECTS[@]}" ]; then
+  die "Only found $next_expected of ${#COMMIT_SUBJECTS[@]} expected commits on $BRANCH (in order) since it diverged from $TARGET_DIR's history. The branch changed shape upstream — update this script's COMMIT_SUBJECTS before re-running."
+fi
 
 log ""
 log "Applied $applied commit(s), $skipped already present."
