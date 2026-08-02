@@ -21,9 +21,13 @@ beforeAll(() => {
 })
 
 const getGlobalModelOptions = vi.fn()
+const getEuRouterRoutingRules = vi.fn()
+const saveHermesConfig = vi.fn()
 
 vi.mock('@/hermes', () => ({
+  getEuRouterRoutingRules: (...args: unknown[]) => getEuRouterRoutingRules(...args),
   getGlobalModelOptions: (...args: unknown[]) => getGlobalModelOptions(...args),
+  saveHermesConfig: (...args: unknown[]) => saveHermesConfig(...args),
   setApiRequestProfile: vi.fn()
 }))
 
@@ -33,6 +37,8 @@ beforeEach(() => {
   getGlobalModelOptions.mockResolvedValue({
     providers: [{ models: ['gemini-3.1-pro', 'gemini-2.5-flash'], name: 'Google', slug: 'google' }]
   })
+  getEuRouterRoutingRules.mockResolvedValue({ available: false, rules: [] })
+  saveHermesConfig.mockResolvedValue({ ok: true })
 })
 
 afterEach(() => {
@@ -42,7 +48,7 @@ afterEach(() => {
 
 // A minimal controller — these tests are about the CATALOG's own behaviour
 // (what it lists, what it offers), not about what any host does with a pick.
-function renderMenu() {
+function renderMenu(opts?: { includeEuRouterRules?: boolean }) {
   const select = vi.fn()
 
   const controller: ModelMenuController = {
@@ -59,7 +65,7 @@ function renderMenu() {
     <QueryClientProvider client={client}>
       <DropdownMenu open>
         <DropdownMenuContent>
-          <ModelCatalogMenu controller={controller} />
+          <ModelCatalogMenu controller={controller} includeEuRouterRules={opts?.includeEuRouterRules} />
         </DropdownMenuContent>
       </DropdownMenu>
     </QueryClientProvider>
@@ -104,5 +110,52 @@ describe('the catalog owns model curation', () => {
     fireEvent.click(screen.getByText('Edit Models…'))
 
     expect($modelVisibilityOpen.get()).toBe(true)
+  })
+})
+
+describe('EU Router routing-rule quick picks', () => {
+  it('stays off when includeEuRouterRules is not passed, even with rules available', async () => {
+    getEuRouterRoutingRules.mockResolvedValue({
+      available: true,
+      rules: [{ enabled: true, id: 'r1', model: 'glm-5.2', models: ['glm-5.1'], name: 'EU Compliance 2' }]
+    })
+
+    renderMenu()
+    await screen.findByText(/Gemini 3\.1 Pro/i)
+
+    expect(getEuRouterRoutingRules).not.toHaveBeenCalled()
+    expect(screen.queryByText('EU Compliance 2')).toBeNull()
+  })
+
+  it('renders each enabled rule as a quick pick, skipping disabled ones', async () => {
+    getEuRouterRoutingRules.mockResolvedValue({
+      available: true,
+      rules: [
+        { enabled: true, id: 'r1', model: 'glm-5.2', models: ['glm-5.1'], name: 'EU Compliance 2' },
+        { enabled: false, id: 'r2', model: 'kimi-k3', models: [], name: 'Disabled Rule' }
+      ]
+    })
+
+    renderMenu({ includeEuRouterRules: true })
+
+    await screen.findByText('EU Compliance 2')
+    expect(screen.queryByText('Disabled Rule')).toBeNull()
+  })
+
+  it('selecting a rule sets the model and persists provider_routing.rule_name', async () => {
+    getEuRouterRoutingRules.mockResolvedValue({
+      available: true,
+      rules: [{ enabled: true, id: 'r1', model: 'glm-5.2', models: ['glm-5.1'], name: 'EU Compliance 2' }]
+    })
+
+    const select = renderMenu({ includeEuRouterRules: true })
+    await screen.findByText('EU Compliance 2')
+
+    fireEvent.click(screen.getByText('EU Compliance 2'))
+
+    expect(select).toHaveBeenCalledWith('glm-5.2', 'eurouter')
+    await vi.waitFor(() => {
+      expect(saveHermesConfig).toHaveBeenCalledWith({ provider_routing: { rule_name: 'EU Compliance 2' } })
+    })
   })
 })

@@ -18,7 +18,7 @@ import {
 import { HighlightMatches } from '@/components/ui/highlight-matches'
 import { usePointerQuiet } from '@/components/ui/keyboard-first'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { HermesGateway } from '@/hermes'
+import { getEuRouterRoutingRules, saveHermesConfig, type HermesGateway } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
 import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
@@ -36,7 +36,7 @@ import {
 } from '@/store/model-visibility'
 import { $collapsedProviders, toggleCollapsedProvider } from '@/store/provider-collapse'
 import { $defaultReasoningEffort } from '@/store/session'
-import type { ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
+import type { EuRouterRoutingRule, ModelOptionProvider, ModelOptionsResponse } from '@/types/hermes'
 
 import { type FastControl, ModelEditSubmenu, resolveFastControl } from './model-edit-submenu'
 
@@ -85,6 +85,12 @@ interface ModelCatalogMenuProps {
   /** Rows appended under the catalog (Refresh Models, Edit Models, …). */
   footer?: ReactNode
   gateway?: HermesGateway
+  /** Render the user's saved EU Router routing rules (eurouter.ai dashboard)
+   *  as one-click quick picks — sets the rule's model AND persists
+   *  provider_routing.rule_name. Off for override surfaces, same reasoning
+   *  as includeMoa: a rule pick's config write is a global side effect that
+   *  doesn't belong to a scoped per-task model override. */
+  includeEuRouterRules?: boolean
   /** Render the virtual `moa` provider's presets as a selectable section.
    *  Off for override surfaces, where a MoA preset isn't a worker model. */
   includeMoa?: boolean
@@ -112,6 +118,7 @@ export function ModelCatalogMenu({
   controller,
   footer,
   gateway,
+  includeEuRouterRules = false,
   includeMoa = false,
   profile = 'default',
   sessionId = null
@@ -153,6 +160,20 @@ export function ModelCatalogMenu({
     [providers, includeMoa]
   )
 
+  // Named EU Router routing rules (eurouter.ai dashboard) — a separate fetch
+  // from the model catalog, so it's its own query rather than a provider row.
+  const euRouterRulesQuery = useQuery({
+    queryKey: ['eurouter-routing-rules'],
+    queryFn: () => getEuRouterRoutingRules(),
+    enabled: includeEuRouterRules,
+    staleTime: 60_000
+  })
+
+  const euRouterRules = useMemo(
+    () => (includeEuRouterRules && euRouterRulesQuery.data?.available ? euRouterRulesQuery.data.rules : []),
+    [includeEuRouterRules, euRouterRulesQuery.data]
+  )
+
   const pickerProviders = useMemo(
     () => providers?.filter(provider => provider.slug.toLowerCase() !== 'moa') ?? [],
     [providers]
@@ -181,6 +202,14 @@ export function ModelCatalogMenu({
   const shownMoaPresets = useMemo(
     () => (q ? moaPresets.filter(preset => `moa ${preset}`.toLowerCase().includes(q)) : moaPresets),
     [moaPresets, q]
+  )
+
+  const shownEuRouterRules = useMemo(
+    () =>
+      euRouterRules.filter(
+        rule => rule.enabled && (!q || `${rule.name} ${rule.model}`.toLowerCase().includes(q))
+      ),
+    [euRouterRules, q]
   )
 
   const selectFamily = async (family: ModelFamily, provider: ModelOptionProvider) => {
@@ -214,12 +243,34 @@ export function ModelCatalogMenu({
     closeMenu()
   }
 
+  // A rule bundles a model choice with eurouter.ai-side routing/compliance
+  // config the user already curated on the dashboard — picking it sets BOTH
+  // the model (same commit path as any manual pick) and persists
+  // provider_routing.rule_name so the very next request actually uses it.
+  // The config PUT deep-merges on the backend, so this can't clobber
+  // unrelated settings.
+  const selectEuRouterRule = async (rule: EuRouterRoutingRule) => {
+    if ((await controller.select(rule.model, 'eurouter')) === false) {
+      return
+    }
+
+    void saveHermesConfig({ provider_routing: { rule_name: rule.name } }).catch(() => {
+      // Model switch already succeeded — a failed rule_name persist just
+      // means the NEXT request falls back to whatever routing config was
+      // already saved. Not worth surfacing an error for a menu action the
+      // user has already moved on from.
+    })
+
+    closeMenu()
+  }
+
   // ── Keyboard selection (cmdk semantics on a Radix menu) ───────────────────
   // One flat list mirroring EXACTLY what's rendered (collapse, filter, presets),
   // so the selection can never sit on a hidden row.
   type KbRow =
     | { family: ModelFamily; key: string; kind: 'family'; provider: ModelOptionProvider }
     | { key: string; kind: 'moa'; preset: string }
+    | { key: string; kind: 'eurouter-rule'; rule: EuRouterRoutingRule }
 
   const kbRows = useMemo<KbRow[]>(
     () => [
@@ -233,9 +284,10 @@ export function ModelCatalogMenu({
               provider: group.provider
             }))
       ),
+      ...shownEuRouterRules.map((rule): KbRow => ({ key: `eurouter-rule:${rule.id}`, kind: 'eurouter-rule', rule })),
       ...shownMoaPresets.map((preset): KbRow => ({ key: `moa:${preset}`, kind: 'moa', preset }))
     ],
-    [groups, collapsedProviders, search, shownMoaPresets]
+    [groups, collapsedProviders, search, shownEuRouterRules, shownMoaPresets]
   )
 
   const [kbOverride, setKbOverride] = useState<null | number>(null)
@@ -273,6 +325,12 @@ export function ModelCatalogMenu({
 
     if (row.kind === 'moa') {
       void selectMoaPreset(row.preset)
+
+      return
+    }
+
+    if (row.kind === 'eurouter-rule') {
+      void selectEuRouterRule(row.rule)
 
       return
     }
@@ -470,6 +528,33 @@ export function ModelCatalogMenu({
           })}
         </div>
       )}
+
+      {shownEuRouterRules.length > 0 ? (
+        <div className={cn(quietRows)}>
+          <DropdownMenuSeparator className="mx-0" />
+          <DropdownMenuLabel className={dropdownMenuSectionLabel}>EU Router rules</DropdownMenuLabel>
+          {shownEuRouterRules.map(rule => {
+            const isCurrentRule = current.provider === 'eurouter' && current.model === rule.model
+
+            return (
+              <DropdownMenuItem
+                key={`eurouter-rule:${rule.id}`}
+                onSelect={event => {
+                  event.preventDefault()
+                  void selectEuRouterRule(rule)
+                }}
+                {...kbRowProps(`eurouter-rule:${rule.id}`)}
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  <HighlightMatches query={search} text={rule.name} />
+                </span>
+                <span className="shrink-0 text-(--ui-text-tertiary)">{rule.model}</span>
+                {isCurrentRule ? <Codicon className="ml-auto text-foreground" name="check" size="0.75rem" /> : null}
+              </DropdownMenuItem>
+            )
+          })}
+        </div>
+      ) : null}
 
       {shownMoaPresets.length > 0 ? (
         <div className={cn(quietRows)}>

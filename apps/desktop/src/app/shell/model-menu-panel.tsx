@@ -236,6 +236,7 @@ export function ModelMenuPanel({ gateway, onSelectModel, profile = 'default', re
         </DropdownMenuItem>
       }
       gateway={gateway}
+      includeEuRouterRules
       includeMoa
       profile={profile}
       sessionId={activeSessionId}
