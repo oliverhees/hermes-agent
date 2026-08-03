@@ -27,10 +27,27 @@
 #
 # USAGE
 #   scripts/eurouter-autoheal.sh [TARGET_DIR]
-#   TARGET_DIR defaults to ~/.hermes/hermes-agent. Meant to be called from a
-#   shell shim wrapping the real `hermes` binary — see the fork's README for
-#   the exact shim snippet. Always exits 0 (never blocks the caller) unless
-#   invoked with --strict.
+#   TARGET_DIR defaults to ~/.hermes/hermes-agent. Always exits 0 (never
+#   blocks the caller) unless invoked with --strict.
+#
+# Meant to be called from a shell shim wrapping the real `hermes` binary —
+# e.g. if `which hermes` resolves to a shim like:
+#
+#   #!/usr/bin/env bash
+#   exec "$HOME/.hermes/hermes-agent/venv/bin/hermes" "$@"
+#
+# add this line before the `exec`, with a local-copy-first / curl-fallback
+# so the shim survives an update wiping this very script from the repo:
+#
+#   REPO="$HOME/.hermes/hermes-agent"
+#   HEAL="$REPO/scripts/eurouter-autoheal.sh"
+#   if [ -x "$HEAL" ]; then
+#     "$HEAL"
+#   elif [ -d "$REPO/.git" ]; then
+#     curl -fsSL --max-time 8 \
+#       "https://raw.githubusercontent.com/oliverhees/hermes-agent/eurouter-provider/scripts/eurouter-autoheal.sh" \
+#       2>/dev/null | bash -s -- "$REPO"
+#   fi
 
 set -uo pipefail
 

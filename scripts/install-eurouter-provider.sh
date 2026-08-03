@@ -56,6 +56,7 @@ COMMIT_SUBJECTS=(
   "EU Router: register in HERMES_OVERLAYS so --provider/model-switch resolve it"
   "EU Router: curate model picker to routing-rule models, add rule quick-picks"
   "EU Router: add rule quick-picks to the composer's model dropdown too"
+  "EU Router: add unattended auto-heal script for the update-reset problem"
 )
 # NOTE: this script's own maintenance commits (e.g. "install script: ...")
 # are deliberately NOT listed here — they only touch this file, which has no
@@ -138,6 +139,10 @@ fi
 log ""
 log "Applied $applied commit(s), $skipped already present."
 
+if [ -f scripts/eurouter-autoheal.sh ]; then
+  bash -n scripts/eurouter-autoheal.sh || die "scripts/eurouter-autoheal.sh has a syntax error after cherry-pick"
+fi
+
 log "Syntax-checking touched backend files ..."
 python3 - <<'PYEOF'
 import ast
@@ -172,3 +177,9 @@ else
   log "  2. Set EUROUTER_API_KEY in ~/.hermes/.env (not done by this script) —"
   log "     get a key at https://www.eurouter.ai?ref=06ZUHPBK."
 fi
+log "  3. Optional but recommended: 'hermes update' resets this repo to"
+log "     origin/main on any divergence, wiping these commits again. To stop"
+log "     re-running this script by hand every time, wrap your 'hermes'"
+log "     command in a shell shim that calls scripts/eurouter-autoheal.sh"
+log "     first — see that script's own header comment for the exact snippet"
+log "     (it no-ops instantly when nothing's missing)."
