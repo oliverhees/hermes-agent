@@ -7,7 +7,7 @@
 
 import type { TipId } from '@/lib/tips/catalog'
 
-export type Locale = 'en' | 'zh' | 'zh-hant' | 'ja' | 'ar'
+export type Locale = 'en' | 'zh' | 'zh-hant' | 'ja' | 'ar' | 'de'
 
 export type ToolTitleKey =
   | 'browser_click'
